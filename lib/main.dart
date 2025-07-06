@@ -1,14 +1,17 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 
-void main() => runApp(const MyApp());
+void main() {
+  runApp(const MyApp());
+}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(title: 'リアルタイムチャット', home: ChatPage());
+    return const MaterialApp(home: ChatPage());
   }
 }
 
@@ -22,6 +25,7 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   WebSocket? _socket;
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController(); // 自動スクロール用
   final List<String> _messages = [];
   bool _isConnected = false;
 
@@ -33,7 +37,6 @@ class _ChatPageState extends State<ChatPage> {
 
   void _connectToWebSocket() async {
     try {
-      // Androidエミュレータ用: 10.0.2.2（localhostへのブリッジ）
       final socket = await WebSocket.connect('ws://10.0.2.2:8080');
       setState(() {
         _socket = socket;
@@ -41,9 +44,7 @@ class _ChatPageState extends State<ChatPage> {
       });
 
       _socket!.listen((data) {
-        setState(() {
-          _messages.add('📩 $data');
-        });
+        _addMessage('📩 $data');
       });
 
       print('✅ WebSocket接続成功');
@@ -52,16 +53,27 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  void _addMessage(String msg) {
+    setState(() {
+      _messages.add(msg);
+    });
+
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   void _sendMessage() {
     if (_isConnected && _controller.text.isNotEmpty) {
       final message = _controller.text;
-
-      // 🔽 自分の発言を即時表示（サーバーからは返ってこない）
-      setState(() {
-        _messages.add('🧑‍💬 (自分) $message');
-      });
-
-      _socket!.add(message);
+      _addMessage('🧑‍💬 (自分) $message'); // 自分の発言を表示
+      _socket!.add(message); // サーバーへ送信
       _controller.clear();
       print('📤 送信: $message');
     }
@@ -71,6 +83,7 @@ class _ChatPageState extends State<ChatPage> {
   void dispose() {
     _socket?.close();
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -82,6 +95,7 @@ class _ChatPageState extends State<ChatPage> {
         children: [
           Expanded(
             child: ListView.builder(
+              controller: _scrollController,
               itemCount: _messages.length,
               itemBuilder: (_, index) {
                 final msg = _messages[index];
